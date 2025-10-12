@@ -2,7 +2,7 @@
 // Monitors shift changes and triggers Slack notifications
 
 const SlackNotificationService = require('./slackNotificationService');
-const { loadScheduleData, calculateCurrentAssignment } = require('../utils/scheduleLoader');
+const { loadScheduleData, calculateCurrentAssignment } = require('../utils/scheduleLoader.node');
 
 class ShiftSchedulerService {
   constructor() {

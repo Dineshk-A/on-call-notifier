@@ -1,4 +1,4 @@
-const { loadScheduleData } = require('../utils/scheduleLoader');
+const { loadScheduleData } = require('../utils/scheduleLoader.node');
 const HistoryService = require('./historyService');
 const fs = require('fs');
 const path = require('path');
