@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Builds
+build/
+dist/
+
+# Environment
+.env
+.env.*
+
+# Data (SQLite)
+data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/
+

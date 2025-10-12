@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Builds
+build/
+dist/
+
+# VCS
+.git/
+.gitignore
+
+# Local env
+.env*
+.vscode/
+.idea/
+.DS_Store
+
+# Runtime/data
+logs/
+*.log
+npm-debug.log*
+
+# App data (mounted as volume at runtime, do not bake into image)
+data/
+

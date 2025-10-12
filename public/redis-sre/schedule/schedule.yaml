@@ -1,0 +1,65 @@
+# On-Call Schedule Configuration
+
+weekday:
+  layer1:
+    type: weekday
+    display_name: "Shift 1"
+    start_time: "2025-09-25T09:30:00+05:30"
+    end_time: "2025-09-25T15:30:00+05:30"
+    hours: 6
+    days_rotate: 2
+    users:
+    - dinesh
+    - melannie
+    - prashanth
+    - alrida
+
+
+  layer2:
+    type: weekday
+    display_name: "Shift 2"
+    start_time: "2025-09-25T15:30:00+05:30"
+    end_time: "2025-09-25T21:30:00+05:30"
+    hours: 6
+    days_rotate: 1
+    users:
+    - melannie
+    - prashanth
+    - alrida
+    - dinesh
+
+
+
+  layer3:
+    type: weekday
+    display_name: "Shift 3"
+    start_time: "2025-09-08T21:30:00+05:30"  # Start from Monday Sep 8th
+    end_time: "2025-09-09T03:30:00+05:30"    # End time next day (6 hours later)
+    hours: 6
+    days_rotate: 5  # 5 days each person
+    users:
+    - kartikeya  # Period 1: Sep 8-12
+
+
+  layer4:
+    type: weekday
+    display_name: "Shift 4"
+    start_time: "2025-09-05T03:30:00+05:30"
+    end_time: "2025-09-05T09:30:00+05:30"
+    hours: 6
+    days_rotate: 0
+    users:
+    - michael
+
+
+weekend:
+  full_weekend:
+    type: weekend
+    display_name: "Weekend Coverage"
+    start_time: "2025-09-06T09:30:00+05:30"
+    end_time: "2025-09-08T09:30:00+05:30"
+    hours: 48
+    days_rotate: 7
+    users:
+    - michael
+    - kartikeya

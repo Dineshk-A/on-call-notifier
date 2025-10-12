@@ -1,0 +1,48 @@
+# Teams Configuration
+# List of all team members for on-call rotation
+
+teams:
+  - name: "SRE Team"
+    members:
+      - id: "dinesh.kumar"
+        name: "Dinesh Kumar"
+        email: "dinesh.kumar@redis.com"
+        timezone: "Asia/Kolkata"
+
+      - id: "prashanth.sathyanarayana"
+        name: "Prashanth Sathyanarayana"
+        email: "prashanth.sathyanarayana@redis.com"
+        timezone: "Asia/Kolkata"
+
+      - id: "melannie.fernandes"
+        name: "Melannie Fernandes"
+        email: "melannie.fernandes@redis.com"
+        timezone: "Asia/Kolkata"
+
+      - id: "gaurav.ranjan"
+        name: "Gaurav Ranjan"
+        email: "gaurav.ranjan@redis.com"
+        timezone: "Asia/Kolkata"
+
+      - id: "alrida.monteiro"
+        name: "Alrida Monteiro"
+        email: "alrida.monteiro@redis.com"
+        timezone: "Asia/Kolkata"
+
+      - id: "joel.jacob"
+        name: "Joel Jacob"
+        email: "joel.jacob@redis.com"
+        timezone: "America/New_York"
+
+      - id: "kartikeya.gupta"
+        name: "Kartikeya Gupta"
+        email: "kartikeya.gupta@redis.com"
+        timezone: "America/New_York"
+
+      - id: "michael.tchistopolskii"
+        name: "Michael Tchistopolskii"
+        email: "michael.tchistopolskii@redis.com"
+        timezone: "America/New_York"
+
+
+

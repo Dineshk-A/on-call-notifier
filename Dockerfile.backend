@@ -1,0 +1,23 @@
+# Backend (Express + Scheduler) production image
+FROM node:18-slim
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Install backend dependencies only (kept separate from frontend)
+COPY server/package*.json server/
+RUN cd server \
+ && npm ci --only=production || npm install --only=production
+
+# Copy backend code and shared app code it depends on
+COPY server ./server
+COPY src ./src
+COPY public ./public
+COPY config ./config
+
+# Runtime data dir for SQLite database
+RUN mkdir -p /app/data
+
+EXPOSE 3001
+CMD ["node", "server/notificationServer.js"]
+

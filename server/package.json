@@ -1,0 +1,33 @@
+{
+  "name": "redis-oncall-notification-server",
+  "version": "1.0.0",
+  "description": "Notification server for Redis On-Call system - sends Slack notifications for shift changes",
+  "main": "notificationServer.js",
+  "scripts": {
+    "start": "node notificationServer.js",
+    "dev": "nodemon notificationServer.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "redis",
+    "on-call",
+    "slack",
+    "notifications",
+    "shift-scheduler"
+  ],
+  "author": "Redis On-Call Team",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^2.6.7",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

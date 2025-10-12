@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  backend:
+    container_name: redis-oncall-backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      platforms:
+        - linux/amd64
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist SQLite history DB
+      - ./data:/app/data
+      # Allow dynamic YAML + overrides edits without rebuilding
+      - ./public/redis-sre:/app/public/redis-sre
+    restart: unless-stopped
+
+  frontend:
+    container_name: redis-oncall-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      platforms:
+        - linux/amd64
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
