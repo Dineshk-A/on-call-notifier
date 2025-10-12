@@ -3,7 +3,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const yamlLib = require('js-yaml');
+let yamlLib;
+try {
+  yamlLib = require('../../server/node_modules/js-yaml');
+} catch (e) {
+  yamlLib = require('js-yaml');
+}
 
 function resolveExistingPath(possiblePaths) {
   for (const p of possiblePaths) {
