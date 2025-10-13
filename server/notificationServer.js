@@ -8,6 +8,7 @@ const cors = require('cors');
 const path = require('path');
 const ShiftSchedulerService = require('../src/services/shiftSchedulerService');
 const VersionedScheduleService = require('../src/services/versionedScheduleService');
+const { calculateCurrentAssignment } = require('../src/utils/scheduleLoader.node');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +32,44 @@ app.get('/api/status', (req, res) => {
     data: status,
     timestamp: new Date().toISOString()
   });
+});
+
+// Debug: who is on-call now (and next/after) without sending Slack
+app.get('/api/debug/current', (req, res) => {
+  try {
+    const nowParam = req.query.now; // optional ISO string
+    const now = nowParam ? new Date(nowParam) : new Date();
+
+    const active = shiftScheduler.getCurrentActiveLayer(now);
+    if (!active) {
+      return res.json({ success: true, data: { active: null, message: 'No active layer at this time' }, timestamp: new Date().toISOString() });
+    }
+
+    const overrides = shiftScheduler.loadOverrides();
+    const assignment = calculateCurrentAssignment(active.config, now, overrides, active.layerKey);
+
+    // Use same next-in-sequence logic as Slack notifications
+    const next = shiftScheduler.getNextShiftsInSequence(active.layerKey, now, overrides, 2);
+
+    // End time for the currently active shift
+    const endTime = shiftScheduler.calculateCurrentShiftEndTime(active.layerKey, now);
+
+    res.json({
+      success: true,
+      data: {
+        now: now.toISOString(),
+        activeLayerKey: active.layerKey,
+        activeLayerName: active.config.display_name,
+        currentPerson: assignment.person,
+        currentIsOverride: assignment.isOverride || false,
+        currentEndsAtUtc: endTime.toISOString(),
+        next
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'debug error', error: e.message });
+  }
 });
 
 app.post('/api/start', async (req, res) => {
