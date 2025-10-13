@@ -302,38 +302,33 @@ class ShiftSchedulerService {
    */
   isCurrentTimeInShift(currentTime, layerConfig) {
     try {
-      const startTime = new Date(layerConfig.start_time);
-      const endTime = new Date(layerConfig.end_time);
-
-      // Extract timezone from start_time (e.g., "+05:30" from "2025-09-25T09:30:00+05:30")
+      // Extract timezone from start_time (e.g., "+05:30")
       const timezoneMatch = layerConfig.start_time.match(/([+-]\d{2}:\d{2})$/);
       const timezone = timezoneMatch ? timezoneMatch[1] : '+05:30'; // Default to IST
+      const tzName = this.getTimezoneFromOffset(timezone);
 
-      // Convert current time to the schedule's timezone using proper timezone conversion
-      // If schedule is in IST (+05:30), convert current time to IST
-      const currentInScheduleTz = new Date(currentTime.toLocaleString("en-US", {timeZone: this.getTimezoneFromOffset(timezone)}));
-
-      // Get time components for comparison
+      // Convert current time to the schedule's timezone for comparison
+      const currentInScheduleTz = new Date(currentTime.toLocaleString('en-US', { timeZone: tzName }));
       const currentHour = currentInScheduleTz.getHours();
       const currentMinute = currentInScheduleTz.getMinutes();
       const currentTotalMinutes = currentHour * 60 + currentMinute;
 
-      const startHour = startTime.getHours();
-      const startMinute = startTime.getMinutes();
+      // Parse start/end HH:mm directly from ISO (to avoid server-local timezone skew)
+      const startMatch = layerConfig.start_time.match(/T(\d{2}):(\d{2})/);
+      const endMatch = layerConfig.end_time.match(/T(\d{2}):(\d{2})/);
+      const startHour = startMatch ? parseInt(startMatch[1], 10) : 0;
+      const startMinute = startMatch ? parseInt(startMatch[2], 10) : 0;
+      const endHour = endMatch ? parseInt(endMatch[1], 10) : 0;
+      const endMinute = endMatch ? parseInt(endMatch[2], 10) : 0;
       const startTotalMinutes = startHour * 60 + startMinute;
-
-      const endHour = endTime.getHours();
-      const endMinute = endTime.getMinutes();
       const endTotalMinutes = endHour * 60 + endMinute;
 
       console.log(`🕐 Checking ${layerConfig.display_name}: current=${currentHour}:${currentMinute.toString().padStart(2, '0')} (${currentTotalMinutes}min), start=${startHour}:${startMinute.toString().padStart(2, '0')} (${startTotalMinutes}min), end=${endHour}:${endMinute.toString().padStart(2, '0')} (${endTotalMinutes}min)`);
 
-      // Handle shifts that cross midnight (end time < start time)
+      // Handle shifts that cross midnight (end time < start time in schedule TZ)
       if (endTotalMinutes < startTotalMinutes) {
-        // Shift crosses midnight (e.g., 21:30 to 03:30)
         return currentTotalMinutes >= startTotalMinutes || currentTotalMinutes < endTotalMinutes;
       } else {
-        // Normal shift within same day
         return currentTotalMinutes >= startTotalMinutes && currentTotalMinutes < endTotalMinutes;
       }
     } catch (error) {
