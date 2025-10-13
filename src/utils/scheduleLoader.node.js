@@ -177,39 +177,54 @@ function calculateCurrentAssignment(layer, date, overrides = {}, layerKey = null
     return { person: layer.users[0], isOverride: false };
   }
 
-  const startDate = new Date(layer.start_time);
-  const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-  const currentDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  // Timezone-aware day math based on the timezone in layer.start_time (e.g., +05:30)
+  const tzMatch = String(layer.start_time || '').match(/([+-])(\d{2}):(\d{2})$/);
+  const tzSign = tzMatch && tzMatch[1] === '-' ? -1 : 1;
+  const tzOffsetMin = tzMatch ? tzSign * (parseInt(tzMatch[2], 10) * 60 + parseInt(tzMatch[3], 10)) : 0;
+
+  // Start date in schedule's timezone: take date portion from the ISO string
+  const startDateStr = String(layer.start_time).split('T')[0]; // YYYY-MM-DD in schedule tz
+  const [sy, sm, sd] = startDateStr.split('-').map(n => parseInt(n, 10));
+  const startDateInTz = new Date(Date.UTC(sy, sm - 1, sd)); // represent midnight of that date in tz
+
+  // Current date in schedule's timezone: shift UTC by the tz offset and take the date portion
+  const dateUtc = new Date(date);
+  const currentInTz = new Date(dateUtc.getTime() + tzOffsetMin * 60000);
+  const currentDateInTzOnly = new Date(Date.UTC(
+    currentInTz.getUTCFullYear(),
+    currentInTz.getUTCMonth(),
+    currentInTz.getUTCDate()
+  ));
 
   let daysDiff;
   if (layer.type === 'weekday') {
     daysDiff = 0;
-    const tempDate = new Date(startDateOnly);
-    while (tempDate <= currentDateOnly) {
-      const dayOfWeek = tempDate.getDay();
+    const tempDate = new Date(startDateInTz);
+    while (tempDate <= currentDateInTzOnly) {
+      const dayOfWeek = tempDate.getUTCDay();
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
         daysDiff++;
       }
-      tempDate.setDate(tempDate.getDate() + 1);
+      tempDate.setUTCDate(tempDate.getUTCDate() + 1);
     }
   } else if (layer.type === 'weekend') {
     daysDiff = 0;
-    const tempDate = new Date(startDateOnly);
-    while (tempDate < currentDateOnly) {
-      const dayOfWeek = tempDate.getDay();
+    const tempDate = new Date(startDateInTz);
+    while (tempDate < currentDateInTzOnly) {
+      const dayOfWeek = tempDate.getUTCDay();
       if (dayOfWeek === 0 || dayOfWeek === 6) {
         daysDiff++;
       }
-      tempDate.setDate(tempDate.getDate() + 1);
+      tempDate.setUTCDate(tempDate.getUTCDate() + 1);
     }
   } else {
-    daysDiff = Math.floor((currentDateOnly - startDateOnly) / (1000 * 60 * 60 * 24));
+    daysDiff = Math.floor((currentDateInTzOnly - startDateInTz) / (1000 * 60 * 60 * 24));
   }
 
   console.log('Layer calculation:', {
     layerType: layer.type,
-    startDate: startDateOnly.toDateString(),
-    currentDate: currentDateOnly.toDateString(),
+    startDateTz: startDateInTz.toISOString().split('T')[0],
+    currentDateTz: currentDateInTzOnly.toISOString().split('T')[0],
     daysDiff,
     daysRotate: layer.days_rotate,
     users: layer.users
