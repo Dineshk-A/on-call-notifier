@@ -563,26 +563,27 @@ class ShiftSchedulerService {
       return currentWeekendEnd;
     }
 
-    // For weekday shifts, read end time directly from YAML config
+    // For weekday shifts, read end time directly from YAML config (includes timezone)
     const configEndTime = new Date(layerConfig.end_time);
-
-    // Create the end time for the current shift
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endTimeUTC = new Date(today);
-
-    // Set the time components from the config (which includes timezone info)
-    endTimeUTC.setUTCFullYear(today.getUTCFullYear());
-    endTimeUTC.setUTCMonth(today.getUTCMonth());
-    endTimeUTC.setUTCDate(today.getUTCDate());
-    endTimeUTC.setUTCHours(configEndTime.getUTCHours());
-    endTimeUTC.setUTCMinutes(configEndTime.getUTCMinutes());
-    endTimeUTC.setUTCSeconds(0);
-    endTimeUTC.setUTCMilliseconds(0);
-
-    // Handle cross-midnight shifts (end time is next day)
     const configStartTime = new Date(layerConfig.start_time);
-    if (configEndTime.getUTCHours() < configStartTime.getUTCHours()) {
-      // End time is next day
+
+    // Build end time using UTC-safe constructor to avoid local TZ skew
+    const endTimeUTC = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      configEndTime.getUTCHours(),
+      configEndTime.getUTCMinutes(),
+      0,
+      0
+    ));
+
+    // Handle cross-midnight shifts (when end clock time is earlier than start clock time in UTC terms)
+    const endEarlierThanStart = (
+      configEndTime.getUTCHours() < configStartTime.getUTCHours() ||
+      (configEndTime.getUTCHours() === configStartTime.getUTCHours() && configEndTime.getUTCMinutes() < configStartTime.getUTCMinutes())
+    );
+    if (endEarlierThanStart) {
       endTimeUTC.setUTCDate(endTimeUTC.getUTCDate() + 1);
     }
 
