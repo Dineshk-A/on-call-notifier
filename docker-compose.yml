@@ -33,5 +33,8 @@ services:
       - backend
     ports:
       - "80:80"
+    volumes:
+      # Serve live YAML/overrides to the SPA without rebuilds
+      - ./public/redis-sre:/usr/share/nginx/html/redis-sre:ro
     restart: unless-stopped
 
