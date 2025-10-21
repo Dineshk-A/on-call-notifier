@@ -58,8 +58,9 @@ class SlackNotificationService {
     // Strip the Handover section (header + placeholder) from the main template
     // Example in config: "\n\n:arrows_counterclockwise: *NEXT ON-CALL HANDOVER*\n{nextOnCall}"
     let mainTemplateText = template.text
-      .replace(/\n\s*:arrows_counterclockwise: \*NEXT ON-CALL HANDOVER\*\n\{nextOnCall\}/, '')
-      .replace('{nextOnCall}', ''); // safety fallback if header text changes
+      // Remove the entire Handover block (header + {nextOnCall}), robust to extra newlines/formatting
+      .replace(/\n+\s*:arrows_counterclockwise:.*\n\s*\{nextOnCall\}/i, '')
+      .replace('{nextOnCall}', ''); // safety fallback if placeholder exists standalone
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
     const mainText = this.replaceTemplateVariables(mainTemplateText, shiftInfo);
