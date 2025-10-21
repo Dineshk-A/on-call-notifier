@@ -63,22 +63,10 @@ class SlackNotificationService {
   async sendShiftStartNotification(shiftInfo) {
     const template = this.config.notifications.templates.shiftStart;
 
-    console.log('tmpl.shiftStart before strip:', JSON.stringify(template.text));
+    console.log('tmpl.shiftStart before split (ignored for main):', JSON.stringify(template.text));
 
-    // Strip the Handover section (header + placeholder) from the main template
-    // Example in config: "\n\n:arrows_counterclockwise: *NEXT ON-CALL HANDOVER*\n{nextOnCall}"
-    let mainTemplateText = template.text
-      // Remove the entire Handover block (header + {nextOnCall}), robust to extra newlines/formatting
-      .replace(/\n+\s*:arrows_counterclockwise:.*\n\s*\{nextOnCall\}/i, '')
-      .replace('{nextOnCall}', ''); // safety fallback if placeholder exists standalone
-
-    console.log('mainTemplateText after strip:', JSON.stringify(mainTemplateText));
-
-    // Fallback: if anything related to handover remains, build a clean main template explicitly
-    if (/\{nextOnCall\}|:arrows_counterclockwise:/i.test(mainTemplateText)) {
-      console.warn('Handover block still present after strip; using minimal main template');
-      mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
-    }
+    // Build a clean CURRENT-only main template explicitly (do not rely on regex/removal)
+    let mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
     const mainText = this.replaceTemplateVariables(mainTemplateText, shiftInfo);
