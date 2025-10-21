@@ -4,27 +4,32 @@ weekday:
   layer1:
     type: weekday
     display_name: "Shift 1"
-    start_time: "2025-09-25T09:30:00+05:30"
-    end_time: "2025-09-25T15:30:00+05:30"
+    start_time: "2025-10-13T09:30:00+05:30"
+    end_time: "2025-10-13T15:30:00+05:30"
     hours: 6
     days_rotate: 2
     users:
-    - dinesh
-    - melannie
     - prashanth
     - alrida
+    - dinesh
+    - melannie
+
 
 
   layer2:
     type: weekday
     display_name: "Shift 2"
-    start_time: "2025-09-25T15:30:00+05:30"
-    end_time: "2025-09-25T21:30:00+05:30"
+    start_time: "2025-10-13T15:30:00+05:30"
+    end_time: "2025-10-13T21:30:00+05:30"
     hours: 6
     days_rotate: 1
     users:
+    - alrida
+    - dinesh
     - melannie
-    - prashanth
+    - Prashanth
+    - melannie
+    - Prashanth
     - alrida
     - dinesh
 
