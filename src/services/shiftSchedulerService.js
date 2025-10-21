@@ -213,18 +213,13 @@ class ShiftSchedulerService {
   getCurrentActiveLayer(currentTime) {
     const now = currentTime || new Date();
 
-    // Check if it's weekend - dynamically check all weekend layers
-    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-    if (isWeekend && this.scheduleData.weekend) {
+    // Always check weekend layers first using schedule TZ-aware window (covers Sat→Mon 09:30 IST)
+    if (this.scheduleData.weekend) {
       const weekendLayers = Object.entries(this.scheduleData.weekend);
-
       for (const [layerKey, layerConfig] of weekendLayers) {
         if (this.isCurrentTimeInWeekendShift(now, layerConfig)) {
           console.log(`✅ Current active weekend layer: ${layerConfig.display_name}`);
-          return {
-            layerKey,
-            config: layerConfig
-          };
+          return { layerKey, config: layerConfig };
         }
       }
     }
@@ -253,45 +248,56 @@ class ShiftSchedulerService {
    */
   isCurrentTimeInWeekendShift(currentTime, layerConfig) {
     // Extract timezone from start_time
-    const startTime = new Date(layerConfig.start_time);
-    const endTime = new Date(layerConfig.end_time);
+    const startCfg = new Date(layerConfig.start_time);
+    const endCfg = new Date(layerConfig.end_time);
 
-    // Get timezone offset from the start_time string
-    const timeZoneMatch = layerConfig.start_time.match(/([+-]\d{2}:\d{2})$/);
-    const timeZoneOffset = timeZoneMatch ? timeZoneMatch[1] : '+00:00';
+    // Timezone name from offset
+    const tzMatch = layerConfig.start_time.match(/([+-]\d{2}:\d{2})$/);
+    const tzOffset = tzMatch ? tzMatch[1] : '+05:30';
+    const tzName = this.getTimezoneFromOffset(tzOffset);
 
-    // Convert current time to schedule timezone
-    const scheduleTime = new Date(currentTime.toLocaleString("en-US", {timeZone: this.getTimezoneFromOffset(timeZoneOffset)}));
+    // Current time in schedule TZ
+    const nowTz = new Date(currentTime.toLocaleString('en-US', { timeZone: tzName }));
 
-    console.log(`🕐 Checking Weekend ${layerConfig.display_name}: current=${scheduleTime.getHours()}:${scheduleTime.getMinutes().toString().padStart(2, '0')} (${scheduleTime.getMinutes() + scheduleTime.getHours() * 60}min)`);
-    console.log(`🕐 Weekend shift: start=${startTime.toLocaleString()}, end=${endTime.toLocaleString()}`);
+    // HH:mm from config (schedule TZ clock times)
+    const startHour = startCfg.getHours();
+    const startMinute = startCfg.getMinutes();
+    const endHour = endCfg.getHours();
+    const endMinute = endCfg.getMinutes();
 
-    // For weekend shifts, check if current time is within the weekend period
-    const currentDay = scheduleTime.getDay();
-    const isCurrentWeekend = currentDay === 0 || currentDay === 6; // Sunday or Saturday
-
-    if (!isCurrentWeekend) {
-      console.log(`❌ Not weekend: current day is ${currentDay}`);
+    // Determine the Saturday that begins this weekend window (in schedule TZ)
+    const day = nowTz.getDay(); // 0 Sun, 1 Mon, ..., 6 Sat
+    const startDate = new Date(nowTz);
+    if (day === 6) {
+      // Saturday → weekend starts today at startHour:startMinute
+    } else if (day === 0) {
+      // Sunday → weekend started yesterday (Saturday)
+      startDate.setDate(startDate.getDate() - 1);
+    } else if (day === 1) {
+      // Monday → still weekend only before endHour:endMinute
+      const curMin = nowTz.getHours() * 60 + nowTz.getMinutes();
+      const endMin = endHour * 60 + endMinute;
+      if (curMin > endMin) {
+        return false; // after Monday end, weekend over
+      }
+      // Saturday is two days before Monday
+      startDate.setDate(startDate.getDate() - 2);
+    } else {
+      // Tue–Fri → never weekend
       return false;
     }
 
-    // Check if current time is within the weekend shift hours
-    const currentHour = scheduleTime.getHours();
-    const currentMinute = scheduleTime.getMinutes();
-    const startHour = startTime.getHours();
-    const startMinute = startTime.getMinutes();
-    const endHour = endTime.getHours();
-    const endMinute = endTime.getMinutes();
+    // Build concrete weekend start (Sat at start HH:mm) and end (Mon at end HH:mm) in schedule TZ
+    const weekendStart = new Date(startDate);
+    weekendStart.setHours(startHour, startMinute, 0, 0);
 
-    const currentMinutes = currentHour * 60 + currentMinute;
-    const startMinutes = startHour * 60 + startMinute;
-    const endMinutes = endHour * 60 + endMinute;
+    const weekendEnd = new Date(weekendStart);
+    weekendEnd.setDate(weekendEnd.getDate() + 2); // Sat → Mon
+    weekendEnd.setHours(endHour, endMinute, 0, 0);
 
-    // For weekend shifts that span multiple days, we consider the entire weekend period
-    const isInWeekendShift = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
-
-    console.log(`🕐 Weekend shift check: ${isInWeekendShift ? '✅ ACTIVE' : '❌ NOT ACTIVE'}`);
-    return isInWeekendShift;
+    const active = nowTz >= weekendStart && nowTz <= weekendEnd;
+    console.log(`🕐 Weekend window: ${weekendStart.toLocaleString()} → ${weekendEnd.toLocaleString()} | now=${nowTz.toLocaleString()} | ${active ? '✅ ACTIVE' : '❌ NOT ACTIVE'}`);
+    return active;
   }
 
   /**
@@ -518,8 +524,37 @@ class ShiftSchedulerService {
         startTime: formatTime(shiftTime),
         endTime: formatTime(currentEndTime),
         duration: layerConfig.hours || 'Unknown',
-        nextAssignments: nextAssignments
+        nextAssignments: nextAssignments,
+        postWeekendNext: []
       };
+
+      // If weekend, also prepare Monday Shift 1 and Shift 2 in thread
+      if (layerConfig.type === 'weekend') {
+        const weekendEnd = this.calculateCurrentShiftEndTime(layerKey, shiftTime);
+        const layer1Start = this.calculateNextShiftStartTime('layer1', weekendEnd);
+        const layer2Start = this.calculateNextShiftStartTime('layer2', weekendEnd);
+
+        const ov = overrides || {};
+        const l1 = this.getLayerConfig('layer1');
+        const l2 = this.getLayerConfig('layer2');
+
+        if (l1 && layer1Start) {
+          const a1 = calculateCurrentAssignment(l1, layer1Start, ov, 'layer1');
+          shiftInfo.postWeekendNext.push({
+            layer: l1.display_name || 'Shift 1',
+            person: a1.person,
+            startTime: formatTime(layer1Start)
+          });
+        }
+        if (l2 && layer2Start) {
+          const a2 = calculateCurrentAssignment(l2, layer2Start, ov, 'layer2');
+          shiftInfo.postWeekendNext.push({
+            layer: l2.display_name || 'Shift 2',
+            person: a2.person,
+            startTime: formatTime(layer2Start)
+          });
+        }
+      }
 
       await this.slackService.sendShiftStartNotification(shiftInfo);
       console.log(`📢 Sent notification for ${shiftInfo.shiftName} shift`);

@@ -158,7 +158,13 @@ function calculateCurrentAssignment(layer, date, overrides = {}, layerKey = null
     return { person: 'No users assigned', isOverride: false };
   }
 
-  const dateStr = new Date(date).toISOString().split('T')[0];
+  // Use schedule timezone date for overrides
+  const tzMatchOv = String(layer.start_time || '').match(/([+-])(\d{2}):(\d{2})$/);
+  const tzSignOv = tzMatchOv && tzMatchOv[1] === '-' ? -1 : 1;
+  const tzOffsetMinOv = tzMatchOv ? tzSignOv * (parseInt(tzMatchOv[2], 10) * 60 + parseInt(tzMatchOv[3], 10)) : 0;
+  const dateUtcOv = new Date(date);
+  const currentInTzOv = new Date(dateUtcOv.getTime() + tzOffsetMinOv * 60000);
+  const dateStr = `${currentInTzOv.getUTCFullYear()}-${String(currentInTzOv.getUTCMonth()+1).padStart(2,'0')}-${String(currentInTzOv.getUTCDate()).padStart(2,'0')}`;
   const layerKeyToUse = layerKey || layer.type || 'weekend';
 
   if (overrides[dateStr] && overrides[dateStr][layerKeyToUse]) {

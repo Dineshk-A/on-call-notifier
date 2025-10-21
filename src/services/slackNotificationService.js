@@ -55,12 +55,34 @@ class SlackNotificationService {
   async sendShiftStartNotification(shiftInfo) {
     const template = this.config.notifications.templates.shiftStart;
 
-    // Simple, clean text format - no attachments to avoid noise
-    const message = {
-      text: this.replaceTemplateVariables(template.text, shiftInfo)
-    };
+    // Main message without NEXT/AFTER to keep it clean; those go as thread reply
+    const mainText = this.replaceTemplateVariables(template.text.replace('{nextOnCall}', ''), shiftInfo);
+    const main = await this.sendMessage({ text: mainText });
 
-    return await this.sendMessage(message);
+    // Post NEXT/AFTER and optional Monday shifts as a threaded reply
+    if (main && main.ok && main.ts) {
+      let parts = [];
+
+      if (shiftInfo.nextAssignments && shiftInfo.nextAssignments.length > 0) {
+        const nextList = shiftInfo.nextAssignments.map((assignment, index) => {
+          if (index === 0) return `:large_yellow_circle: NEXT: ${assignment.person} starts at ${assignment.startTime || 'TBD'}`;
+          if (index === 1) return `:large_orange_circle: AFTER: ${assignment.person} starts at ${assignment.startTime || 'TBD'}`;
+          return `🔵 ${assignment.person} - ${assignment.startTime || 'TBD'}`;
+        }).join('\n');
+        parts.push(`:arrows_counterclockwise: Handover\n${nextList}`);
+      }
+
+      if (shiftInfo.postWeekendNext && shiftInfo.postWeekendNext.length > 0) {
+        const mondayList = shiftInfo.postWeekendNext.map(m => `• ${m.layer}: ${m.person} starts at ${m.startTime}`).join('\n');
+        parts.push(`📅 After weekend ends:\n${mondayList}`);
+      }
+
+      if (parts.length > 0) {
+        await this.sendMessage({ text: parts.join('\n\n'), thread_ts: main.ts });
+      }
+    }
+
+    return main;
   }
 
   /**
