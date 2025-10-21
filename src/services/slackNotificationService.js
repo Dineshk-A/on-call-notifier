@@ -21,6 +21,13 @@ class SlackNotificationService {
     }
 
     try {
+      const preview = (message && message.text) ? String(message.text).split('\n').slice(0,3).join(' | ') : '';
+      console.log('➡️ Sending Slack message', {
+        thread: Boolean(message && message.thread_ts),
+        preview,
+        length: (message && message.text) ? message.text.length : 0
+      });
+
       const response = await fetch(`${this.config.api.baseUrl}${this.config.api.endpoints.postMessage}`, {
         method: 'POST',
         headers: {
@@ -34,7 +41,8 @@ class SlackNotificationService {
       });
 
       const result = await response.json();
-      
+      console.log('⬅️ Slack API response', { ok: result.ok, ts: result.ts, error: result.error });
+
       if (!result.ok) {
         console.error('Slack API error:', result.error);
         return result;
@@ -55,6 +63,8 @@ class SlackNotificationService {
   async sendShiftStartNotification(shiftInfo) {
     const template = this.config.notifications.templates.shiftStart;
 
+    console.log('tmpl.shiftStart before strip:', JSON.stringify(template.text));
+
     // Strip the Handover section (header + placeholder) from the main template
     // Example in config: "\n\n:arrows_counterclockwise: *NEXT ON-CALL HANDOVER*\n{nextOnCall}"
     let mainTemplateText = template.text
@@ -62,8 +72,17 @@ class SlackNotificationService {
       .replace(/\n+\s*:arrows_counterclockwise:.*\n\s*\{nextOnCall\}/i, '')
       .replace('{nextOnCall}', ''); // safety fallback if placeholder exists standalone
 
+    console.log('mainTemplateText after strip:', JSON.stringify(mainTemplateText));
+
+    // Fallback: if anything related to handover remains, build a clean main template explicitly
+    if (/\{nextOnCall\}|:arrows_counterclockwise:/i.test(mainTemplateText)) {
+      console.warn('Handover block still present after strip; using minimal main template');
+      mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
+    }
+
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
     const mainText = this.replaceTemplateVariables(mainTemplateText, shiftInfo);
+    console.log('mainText(final):', JSON.stringify(mainText));
     const main = await this.sendMessage({ text: mainText });
 
     // Post NEXT/AFTER and optional Monday shifts as a threaded reply
@@ -85,7 +104,9 @@ class SlackNotificationService {
       }
 
       if (parts.length > 0) {
-        await this.sendMessage({ text: parts.join('\n\n'), thread_ts: main.ts });
+        const threadText = parts.join('\n\n');
+        console.log('threadText(final):', JSON.stringify(threadText));
+        await this.sendMessage({ text: threadText, thread_ts: main.ts });
       }
     }
 
