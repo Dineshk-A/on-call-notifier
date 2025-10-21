@@ -55,8 +55,14 @@ class SlackNotificationService {
   async sendShiftStartNotification(shiftInfo) {
     const template = this.config.notifications.templates.shiftStart;
 
+    // Strip the Handover section (header + placeholder) from the main template
+    // Example in config: "\n\n:arrows_counterclockwise: *NEXT ON-CALL HANDOVER*\n{nextOnCall}"
+    let mainTemplateText = template.text
+      .replace(/\n\s*:arrows_counterclockwise: \*NEXT ON-CALL HANDOVER\*\n\{nextOnCall\}/, '')
+      .replace('{nextOnCall}', ''); // safety fallback if header text changes
+
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
-    const mainText = this.replaceTemplateVariables(template.text.replace('{nextOnCall}', ''), shiftInfo);
+    const mainText = this.replaceTemplateVariables(mainTemplateText, shiftInfo);
     const main = await this.sendMessage({ text: mainText });
 
     // Post NEXT/AFTER and optional Monday shifts as a threaded reply
