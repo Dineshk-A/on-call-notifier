@@ -546,7 +546,8 @@ class ShiftSchedulerService {
           shiftInfo.postWeekendNext.push({
             layer: l1.display_name || 'Shift 1',
             person: a1.person,
-            startTime: formatTime(layer1Start)
+            startTime: formatTime(layer1Start),
+            startTimeDate: layer1Start // raw Date for tz-aware formatting in Slack
           });
         }
         if (l2 && layer2Start) {
@@ -554,7 +555,8 @@ class ShiftSchedulerService {
           shiftInfo.postWeekendNext.push({
             layer: l2.display_name || 'Shift 2',
             person: a2.person,
-            startTime: formatTime(layer2Start)
+            startTime: formatTime(layer2Start),
+            startTimeDate: layer2Start // raw Date for tz-aware formatting in Slack
           });
         }
       }

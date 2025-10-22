@@ -225,8 +225,13 @@ class SlackNotificationService {
       }
 
       if (shiftInfo.postWeekendNext && shiftInfo.postWeekendNext.length > 0) {
-        // Keep Monday items plain or attempt mentions if desired later
-        const mondayList = shiftInfo.postWeekendNext.map(m => `• ${m.layer}: ${m.person} starts at ${m.startTime}`).join('\n');
+        const mondayLines = await Promise.all(shiftInfo.postWeekendNext.map(async (m) => {
+          const resolved = await this.resolveMention(m.person);
+          const startDate = m.startTimeDate || m.date || null;
+          const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (m.startTime || 'TBD');
+          return `• ${m.layer}: ${resolved.display} starts at ${startDisplay}`;
+        }));
+        const mondayList = mondayLines.join('\n');
         parts.push(`📅 After weekend ends:\n${mondayList}`);
       }
 
