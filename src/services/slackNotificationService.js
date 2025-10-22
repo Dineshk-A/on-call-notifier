@@ -2,11 +2,88 @@
 // Handles sending notifications to Slack channel before shift changes
 
 const slackConfig = require('../../config/slack');
+const fs = require('fs');
+const path = require('path');
+let yaml;
+try { yaml = require('js-yaml'); } catch (e) { yaml = null; }
 
 class SlackNotificationService {
   constructor() {
     this.config = slackConfig;
     this.isEnabled = this.config.notifications.enabled;
+    this.emailToSlackIdCache = new Map();
+    this.teamsIndex = null; // lazy-loaded
+  }
+
+  // Lazy load teams.yaml and build an index
+  loadTeamsIndex() {
+    if (this.teamsIndex) return this.teamsIndex;
+    try {
+      const teamsPath = path.join(__dirname, '../../public/redis-sre/teams/teams.yaml');
+      const raw = fs.readFileSync(teamsPath, 'utf8');
+      const doc = yaml ? yaml.load(raw) : null;
+      const index = { byId: new Map(), byEmail: new Map(), members: [] };
+      const teams = (doc && Array.isArray(doc.teams)) ? doc.teams : [];
+      for (const t of teams) {
+        const members = Array.isArray(t.members) ? t.members : [];
+        for (const m of members) {
+          if (!m) continue;
+          index.members.push(m);
+          if (m.id) index.byId.set(String(m.id).toLowerCase(), m);
+          if (m.email) index.byEmail.set(String(m.email).toLowerCase(), m);
+        }
+      }
+      this.teamsIndex = index;
+      return this.teamsIndex;
+    } catch (e) {
+      console.warn('⚠️ Failed to load teams.yaml for Slack mentions:', e.message);
+      this.teamsIndex = { byId: new Map(), byEmail: new Map(), members: [] };
+      return this.teamsIndex;
+    }
+  }
+
+  // Heuristic: find email for a short person name like "dinesh"
+  findEmailForPersonShortName(name) {
+    const idx = this.loadTeamsIndex();
+    if (!name) return null;
+    const lc = String(name).toLowerCase().trim();
+    // Try: id startsWith, name startsWith, email contains fragment before '@'
+    for (const m of idx.members) {
+      const id = (m.id || '').toLowerCase();
+      const nm = (m.name || '').toLowerCase();
+      const em = (m.email || '').toLowerCase();
+      if (id.startsWith(lc) || nm.startsWith(lc) || em.startsWith(lc + '.')) {
+        return m.email || null;
+      }
+    }
+    return null;
+  }
+
+  async getSlackUserIdByEmail(email) {
+    if (!email) return null;
+    const key = String(email).toLowerCase();
+    if (this.emailToSlackIdCache.has(key)) return this.emailToSlackIdCache.get(key);
+
+    try {
+      const url = `${this.config.api.baseUrl}${this.config.api.endpoints.lookupByEmail}?email=${encodeURIComponent(email)}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.config.botToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const result = await response.json();
+      if (result && result.ok && result.user && result.user.id) {
+        this.emailToSlackIdCache.set(key, result.user.id);
+        return result.user.id;
+      }
+      console.warn('⚠️ Slack users.lookupByEmail failed:', result && result.error);
+      return null;
+    } catch (e) {
+      console.error('Slack users.lookupByEmail error:', e);
+      return null;
+    }
   }
 
   /**
@@ -65,11 +142,26 @@ class SlackNotificationService {
 
     console.log('tmpl.shiftStart before split (ignored for main):', JSON.stringify(template.text));
 
+    // Resolve engineer display name with Slack mention (gate to dinesh only)
+    const engineerRaw = shiftInfo.engineerName;
+    let engineerDisplay = engineerRaw;
+    if (engineerRaw && String(engineerRaw).toLowerCase().trim() === 'dinesh') {
+      const email = this.findEmailForPersonShortName(engineerRaw);
+      console.log('mention lookup for dinesh -> email:', email);
+      const slackId = await this.getSlackUserIdByEmail(email);
+      if (slackId) {
+        engineerDisplay = `<@${slackId}>`;
+        console.log('resolved Slack mention for dinesh:', engineerDisplay);
+      } else {
+        console.warn('could not resolve Slack ID for dinesh, using plain name');
+      }
+    }
+
     // Build a clean CURRENT-only main template explicitly (do not rely on regex/removal)
     let mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
-    const mainText = this.replaceTemplateVariables(mainTemplateText, shiftInfo);
+    const mainText = this.replaceTemplateVariables(mainTemplateText, { ...shiftInfo, engineerName: engineerDisplay });
     console.log('mainText(final):', JSON.stringify(mainText));
     const main = await this.sendMessage({ text: mainText });
 

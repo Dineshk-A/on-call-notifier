@@ -37,7 +37,8 @@ const slackConfig = {
     endpoints: {
       postMessage: '/chat.postMessage',
       userInfo: '/users.info',
-      channelInfo: '/conversations.info'
+      channelInfo: '/conversations.info',
+      lookupByEmail: '/users.lookupByEmail'
     }
   }
 };
