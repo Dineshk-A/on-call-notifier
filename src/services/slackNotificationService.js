@@ -132,6 +132,58 @@ class SlackNotificationService {
       return { ok: false, error: error.message };
     }
   }
+  // Return member object for a person name/id heuristic match
+  findMemberForPersonName(name) {
+    const idx = this.loadTeamsIndex();
+    if (!name) return null;
+    const lc = String(name).toLowerCase().trim();
+    for (const m of idx.members) {
+      const id = (m.id || '').toLowerCase();
+      const nm = (m.name || '').toLowerCase();
+      const em = (m.email || '').toLowerCase();
+      if (id.startsWith(lc) || nm.startsWith(lc) || em.startsWith(lc + '.')) {
+        return m;
+      }
+    }
+    return null;
+  }
+
+  // Format date in member's timezone with UTC in parentheses
+  formatDateForMember(date, member) {
+    if (!date) return 'TBD';
+    const tz = (member && member.timezone) ? member.timezone : 'UTC';
+    try {
+      const local = new Date(date).toLocaleString('en-US', {
+        timeZone: tz,
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+      });
+      const utc = new Date(date).toLocaleString('en-US', {
+        timeZone: 'UTC',
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+      });
+      return `${local} (${utc})`;
+    } catch (e) {
+      // Fallback to UTC if timezone invalid
+      return new Date(date).toLocaleString('en-US', {
+        timeZone: 'UTC',
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+      }) + ' UTC';
+    }
+  }
+
+  // Resolve display string with Slack mention for a person
+  async resolveMention(name) {
+    const member = this.findMemberForPersonName(name);
+    if (!member || !member.email) {
+      return { display: name, member: member || null, slackId: null };
+    }
+    const slackId = await this.getSlackUserIdByEmail(member.email);
+    if (slackId) {
+      return { display: `<@${slackId}>`, member, slackId };
+    }
+    return { display: name, member, slackId: null };
+  }
+
 
   /**
    * Send shift start notification
@@ -142,26 +194,16 @@ class SlackNotificationService {
 
     console.log('tmpl.shiftStart before split (ignored for main):', JSON.stringify(template.text));
 
-    // Resolve engineer display name with Slack mention (gate to dinesh only)
+    // Resolve CURRENT engineer mention and timezone-aware end time
     const engineerRaw = shiftInfo.engineerName;
-    let engineerDisplay = engineerRaw;
-    if (engineerRaw && String(engineerRaw).toLowerCase().trim() === 'dinesh') {
-      const email = this.findEmailForPersonShortName(engineerRaw);
-      console.log('mention lookup for dinesh -> email:', email);
-      const slackId = await this.getSlackUserIdByEmail(email);
-      if (slackId) {
-        engineerDisplay = `<@${slackId}>`;
-        console.log('resolved Slack mention for dinesh:', engineerDisplay);
-      } else {
-        console.warn('could not resolve Slack ID for dinesh, using plain name');
-      }
-    }
+    const currentResolved = await this.resolveMention(engineerRaw);
+    const endDisplay = this.formatDateForMember(shiftInfo.endDate || new Date(), currentResolved.member);
 
     // Build a clean CURRENT-only main template explicitly (do not rely on regex/removal)
     let mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
-    const mainText = this.replaceTemplateVariables(mainTemplateText, { ...shiftInfo, engineerName: engineerDisplay });
+    const mainText = this.replaceTemplateVariables(mainTemplateText, { ...shiftInfo, engineerName: currentResolved.display, endTime: endDisplay });
     console.log('mainText(final):', JSON.stringify(mainText));
     const main = await this.sendMessage({ text: mainText });
 
@@ -170,15 +212,20 @@ class SlackNotificationService {
       let parts = [];
 
       if (shiftInfo.nextAssignments && shiftInfo.nextAssignments.length > 0) {
-        const nextList = shiftInfo.nextAssignments.map((assignment, index) => {
-          if (index === 0) return `:large_yellow_circle: NEXT: ${assignment.person} starts at ${assignment.startTime || 'TBD'}`;
-          if (index === 1) return `:large_orange_circle: AFTER: ${assignment.person} starts at ${assignment.startTime || 'TBD'}`;
-          return `🔵 ${assignment.person} - ${assignment.startTime || 'TBD'}`;
-        }).join('\n');
+        const nextLines = await Promise.all(shiftInfo.nextAssignments.map(async (assignment, index) => {
+          const resolved = await this.resolveMention(assignment.person);
+          const startDate = assignment.startTimeDate || assignment.date || null;
+          const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (assignment.startTime || 'TBD');
+          if (index === 0) return `:large_yellow_circle: NEXT: ${resolved.display} starts at ${startDisplay}`;
+          if (index === 1) return `:large_orange_circle: AFTER: ${resolved.display} starts at ${startDisplay}`;
+          return `🔵 ${resolved.display} - ${startDisplay}`;
+        }));
+        const nextList = nextLines.join('\n');
         parts.push(`:arrows_counterclockwise: Handover\n${nextList}`);
       }
 
       if (shiftInfo.postWeekendNext && shiftInfo.postWeekendNext.length > 0) {
+        // Keep Monday items plain or attempt mentions if desired later
         const mondayList = shiftInfo.postWeekendNext.map(m => `• ${m.layer}: ${m.person} starts at ${m.startTime}`).join('\n');
         parts.push(`📅 After weekend ends:\n${mondayList}`);
       }

@@ -481,6 +481,7 @@ class ShiftSchedulerService {
         layer: shift.layer,
         date: shift.date,
         startTime: formatTime(shift.startTime),
+        startTimeDate: shift.startTime, // preserve raw Date for timezone-aware formatting in Slack
         isOverride: shift.isOverride
       });
     }
@@ -523,6 +524,8 @@ class ShiftSchedulerService {
         engineerName: currentPerson,
         startTime: formatTime(shiftTime),
         endTime: formatTime(currentEndTime),
+        startDate: new Date(shiftTime), // raw Date for timezone-aware formatting
+        endDate: new Date(currentEndTime), // raw Date for timezone-aware formatting
         duration: layerConfig.hours || 'Unknown',
         nextAssignments: nextAssignments,
         postWeekendNext: []
