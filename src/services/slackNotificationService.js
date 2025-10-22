@@ -76,6 +76,7 @@ class SlackNotificationService {
       const result = await response.json();
       if (result && result.ok && result.user && result.user.id) {
         this.emailToSlackIdCache.set(key, result.user.id);
+        console.log('lookupByEmail success', { email: key, slackId: result.user.id });
         return result.user.id;
       }
       console.warn('⚠️ Slack users.lookupByEmail failed:', result && result.error);
@@ -174,13 +175,24 @@ class SlackNotificationService {
   // Resolve display string with Slack mention for a person
   async resolveMention(name) {
     const member = this.findMemberForPersonName(name);
-    if (!member || !member.email) {
-      return { display: name, member: member || null, slackId: null };
+    if (!member) {
+      console.log('resolveMention: no member match', { name });
+      return { display: name, member: null, slackId: null };
+    }
+    if (member.slack_id) {
+      console.log('resolveMention: using provided slack_id', { name, slackId: member.slack_id });
+      return { display: `<@${member.slack_id}>`, member, slackId: member.slack_id };
+    }
+    if (!member.email) {
+      console.log('resolveMention: member has no email (gated to plain text)', { name, memberId: member.id });
+      return { display: name, member, slackId: null };
     }
     const slackId = await this.getSlackUserIdByEmail(member.email);
     if (slackId) {
+      console.log('resolveMention: lookupByEmail success', { name, email: member.email, slackId });
       return { display: `<@${slackId}>`, member, slackId };
     }
+    console.warn('resolveMention: lookupByEmail failed; falling back to plain name', { name, email: member.email });
     return { display: name, member, slackId: null };
   }
 
@@ -204,6 +216,7 @@ class SlackNotificationService {
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
     const mainText = this.replaceTemplateVariables(mainTemplateText, { ...shiftInfo, engineerName: currentResolved.display, endTime: endDisplay });
+    console.log('main: CURRENT resolved', { raw: engineerRaw, display: currentResolved.display, slackId: currentResolved.slackId || null, endDisplay });
     console.log('mainText(final):', JSON.stringify(mainText));
     const main = await this.sendMessage({ text: mainText });
 
@@ -214,6 +227,7 @@ class SlackNotificationService {
       if (shiftInfo.nextAssignments && shiftInfo.nextAssignments.length > 0) {
         const nextLines = await Promise.all(shiftInfo.nextAssignments.map(async (assignment, index) => {
           const resolved = await this.resolveMention(assignment.person);
+          console.log('mention: NEXT/AFTER', { person: assignment.person, display: resolved.display, slackId: resolved.slackId || null });
           const startDate = assignment.startTimeDate || assignment.date || null;
           const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (assignment.startTime || 'TBD');
           if (index === 0) return `:large_yellow_circle: NEXT: ${resolved.display} starts at ${startDisplay}`;
@@ -227,6 +241,7 @@ class SlackNotificationService {
       if (shiftInfo.postWeekendNext && shiftInfo.postWeekendNext.length > 0) {
         const mondayLines = await Promise.all(shiftInfo.postWeekendNext.map(async (m) => {
           const resolved = await this.resolveMention(m.person);
+          console.log('mention: MONDAY', { person: m.person, display: resolved.display, slackId: resolved.slackId || null });
           const startDate = m.startTimeDate || m.date || null;
           const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (m.startTime || 'TBD');
           return `• ${m.layer}: ${resolved.display} starts at ${startDisplay}`;
