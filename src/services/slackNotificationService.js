@@ -184,6 +184,15 @@ class SlackNotificationService {
       }) + ' UTC';
     }
   }
+  // Format date strictly in UTC
+  formatUtc(date) {
+    if (!date) return 'TBD';
+    return new Date(date).toLocaleString('en-US', {
+      timeZone: 'UTC',
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+    });
+  }
+
 
   // Resolve display string with Slack mention for a person
   async resolveMention(name) {
@@ -219,10 +228,10 @@ class SlackNotificationService {
 
     console.log('tmpl.shiftStart before split (ignored for main):', JSON.stringify(template.text));
 
-    // Resolve CURRENT engineer mention and timezone-aware end time
+    // Resolve CURRENT engineer mention and format end time in UTC only
     const engineerRaw = shiftInfo.engineerName;
     const currentResolved = await this.resolveMention(engineerRaw);
-    const endDisplay = this.formatDateForMember(shiftInfo.endDate || new Date(), currentResolved.member);
+    const endDisplay = this.formatUtc(shiftInfo.endDate || new Date());
 
     // Build a clean CURRENT-only main template explicitly (do not rely on regex/removal)
     let mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
@@ -242,7 +251,7 @@ class SlackNotificationService {
           const resolved = await this.resolveMention(assignment.person);
           console.log('mention: NEXT/AFTER', { person: assignment.person, display: resolved.display, slackId: resolved.slackId || null });
           const startDate = assignment.startTimeDate || assignment.date || null;
-          const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (assignment.startTime || 'TBD');
+          const startDisplay = startDate ? this.formatUtc(new Date(startDate)) : (assignment.startTime || 'TBD');
           if (index === 0) return `:large_yellow_circle: NEXT: ${resolved.display} starts at ${startDisplay}`;
           if (index === 1) return `:large_orange_circle: AFTER: ${resolved.display} starts at ${startDisplay}`;
           return `🔵 ${resolved.display} - ${startDisplay}`;
@@ -256,7 +265,7 @@ class SlackNotificationService {
           const resolved = await this.resolveMention(m.person);
           console.log('mention: MONDAY', { person: m.person, display: resolved.display, slackId: resolved.slackId || null });
           const startDate = m.startTimeDate || m.date || null;
-          const startDisplay = startDate ? this.formatDateForMember(new Date(startDate), resolved.member) : (m.startTime || 'TBD');
+          const startDisplay = startDate ? this.formatUtc(new Date(startDate)) : (m.startTime || 'TBD');
           return `• ${m.layer}: ${resolved.display} starts at ${startDisplay}`;
         }));
         const mondayList = mondayLines.join('\n');
