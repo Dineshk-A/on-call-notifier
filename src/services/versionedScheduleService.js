@@ -1,4 +1,4 @@
-const { loadScheduleData } = require('../utils/scheduleLoader.node');
+const { loadScheduleData, calculateCurrentAssignment } = require('../utils/scheduleLoader.node');
 const HistoryService = require('./historyService');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +9,31 @@ class VersionedScheduleService {
     this.currentSchedule = null;
     this.currentVersion = null;
   }
+  /**
+   * Compute earliest effective date from schedule YAML (YYYY-MM-DD)
+   */
+  getEarliestEffectiveDate(schedule) {
+    try {
+      const dates = [];
+      const addDate = (iso) => {
+        if (!iso) return;
+        // Take date portion in the schedule's own tz (ISO has offset; we can safely use the date part)
+        const dStr = String(iso).split('T')[0];
+        if (dStr && /^\d{4}-\d{2}-\d{2}$/.test(dStr)) dates.push(dStr);
+      };
+      if (schedule && schedule.weekday) {
+        Object.values(schedule.weekday).forEach(layer => addDate(layer && layer.start_time));
+      }
+      if (schedule && schedule.weekend) {
+        Object.values(schedule.weekend).forEach(layer => addDate(layer && layer.start_time));
+      }
+      dates.sort(); // lexicographic works for YYYY-MM-DD
+      return dates.length ? dates[0] : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
 
   /**
    * Initialize the service and check for schedule changes
@@ -45,13 +70,14 @@ class VersionedScheduleService {
     try {
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       const latestVersion = await this.historyService.getScheduleForDate(today);
-      
+
       if (!latestVersion) {
-        // First time setup - create initial version
-        console.log('🆕 Creating initial schedule version');
+        // First time setup - create initial version using earliest start_time date (or today)
+        const earliest = this.getEarliestEffectiveDate(this.currentSchedule) || today;
+        console.log('🆕 Creating initial schedule version', { effectiveDate: earliest });
         this.currentVersion = await this.historyService.createScheduleVersion(
           this.currentSchedule,
-          today,
+          earliest,
           'Initial schedule version',
           'system'
         );
@@ -61,7 +87,7 @@ class VersionedScheduleService {
       // Compare current schedule with latest version
       const currentHash = this.hashSchedule(this.currentSchedule);
       const latestHash = this.hashSchedule(latestVersion.schedule_data);
-      
+
       if (currentHash !== latestHash) {
         console.log('🔄 Schedule changes detected, creating new version');
         this.currentVersion = await this.historyService.createScheduleVersion(
@@ -89,10 +115,10 @@ class VersionedScheduleService {
   async getScheduleForDate(targetDate) {
     try {
       const dateString = typeof targetDate === 'string' ? targetDate : targetDate.toISOString().split('T')[0];
-      
+
       // Try to get historical version first
       const historicalVersion = await this.historyService.getScheduleForDate(dateString);
-      
+
       if (historicalVersion) {
         return {
           schedule: historicalVersion.schedule_data,
@@ -124,7 +150,7 @@ class VersionedScheduleService {
   async getAssignmentForDate(date, layerKey) {
     try {
       const dateString = typeof date === 'string' ? date : date.toISOString().split('T')[0];
-      
+
       // Check if we have historical assignment
       const historical = await this.historyService.getHistoricalAssignment(dateString, layerKey);
       if (historical) {
@@ -138,8 +164,11 @@ class VersionedScheduleService {
 
       // Calculate assignment using appropriate schedule version
       const { schedule, version } = await this.getScheduleForDate(dateString);
-      const assignment = this.calculateAssignment(schedule, date, layerKey);
-      
+      // Load overrides for the month of the target date (YYYY-MM)
+      const month = dateString.substring(0, 7);
+      const overrides = await this.getOverrides(month);
+      const assignment = this.calculateAssignment(schedule, date, layerKey, overrides);
+
       // Store this assignment for future historical reference
       if (assignment && version) {
         await this.historyService.storeHistoricalAssignment(
@@ -165,29 +194,17 @@ class VersionedScheduleService {
   /**
    * Calculate assignment using schedule data and rotation logic
    */
-  calculateAssignment(schedule, date, layerKey) {
+  calculateAssignment(schedule, date, layerKey, overrides = {}) {
     try {
-      // This is a simplified version - you'll need to integrate your existing
-      // rotation calculation logic from shiftSchedulerService.js
-      
-      const layer = schedule.weekday[layerKey] || schedule.weekend[layerKey];
-      if (!layer || !layer.users || layer.users.length === 0) {
-        return null;
-      }
-
-      // Simple rotation based on days since start date
-      const startDate = new Date(layer.start_time || '2025-09-25');
-      const targetDate = new Date(date);
-      const daysDiff = Math.floor((targetDate - startDate) / (1000 * 60 * 60 * 24));
-      const rotationDays = layer.days_rotate || 1;
-      const userIndex = Math.floor(daysDiff / rotationDays) % layer.users.length;
-      
+      // Use the same timezone-aware rotation logic as the scheduler
+      const layer = (schedule.weekday && schedule.weekday[layerKey]) || (schedule.weekend && schedule.weekend[layerKey]);
+      if (!layer) return null;
+      const result = calculateCurrentAssignment(layer, new Date(date), overrides, layerKey) || {};
       return {
-        person: layer.users[userIndex],
+        person: result.person || 'Unknown',
         layerKey,
-        date: date,
-        rotationCycle: Math.floor(daysDiff / rotationDays),
-        userIndex
+        date,
+        isOverride: !!result.isOverride
       };
     } catch (error) {
       console.error('❌ Error calculating assignment:', error);
@@ -227,14 +244,14 @@ class VersionedScheduleService {
     try {
       await this.loadCurrentSchedule(); // Reload current schedule
       const today = new Date().toISOString().split('T')[0];
-      
+
       this.currentVersion = await this.historyService.createScheduleVersion(
         this.currentSchedule,
         today,
         description,
         createdBy
       );
-      
+
       console.log(`✅ Created new schedule version: ${this.currentVersion.versionName}`);
       return this.currentVersion;
     } catch (error) {
@@ -248,11 +265,11 @@ class VersionedScheduleService {
    */
   async getVersionHistory(limit = 10) {
     return new Promise((resolve, reject) => {
-      const sql = `SELECT id, version_name, effective_date, created_at, created_by, description, is_active 
-        FROM schedule_versions 
-        ORDER BY created_at DESC 
+      const sql = `SELECT id, version_name, effective_date, created_at, created_by, description, is_active
+        FROM schedule_versions
+        ORDER BY created_at DESC
         LIMIT ?`;
-      
+
       this.historyService.db.all(sql, [limit], (err, rows) => {
         if (err) {
           reject(err);

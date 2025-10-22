@@ -281,28 +281,29 @@ class HistoryService {
   async cleanupOldData(monthsToKeep = 6) {
     const cutoffDate = new Date();
     cutoffDate.setMonth(cutoffDate.getMonth() - monthsToKeep);
-    const cutoffString = cutoffDate.toISOString().substring(0, 7); // YYYY-MM format
-    
+    const cutoffMonth = cutoffDate.toISOString().substring(0, 7); // YYYY-MM
+    const cutoffDay = cutoffDate.toISOString().substring(0, 10); // YYYY-MM-DD
+
     try {
-      // Clean old assignments
+      // Clean old assignments (compare full date correctly)
       await new Promise((resolve, reject) => {
-        this.db.run(`DELETE FROM historical_assignments WHERE date < ?`, 
-          [cutoffString], function(err) {
+        this.db.run(`DELETE FROM historical_assignments WHERE date < ?`,
+          [cutoffDay], function(err) {
             if (err) reject(err);
             else {
-              console.log(`🧹 Cleaned ${this.changes} old historical assignments`);
+              console.log(`🧹 Cleaned ${this.changes} old historical assignments (< ${cutoffDay})`);
               resolve();
             }
           });
       });
 
-      // Clean old overrides
+      // Clean old overrides (month granularity)
       await new Promise((resolve, reject) => {
-        this.db.run(`DELETE FROM monthly_overrides WHERE month < ?`, 
-          [cutoffString], function(err) {
+        this.db.run(`DELETE FROM monthly_overrides WHERE month < ?`,
+          [cutoffMonth], function(err) {
             if (err) reject(err);
             else {
-              console.log(`🧹 Cleaned ${this.changes} old monthly overrides`);
+              console.log(`🧹 Cleaned ${this.changes} old monthly overrides (< ${cutoffMonth})`);
               resolve();
             }
           });
@@ -310,11 +311,11 @@ class HistoryService {
 
       // Mark old schedule versions as inactive (don't delete for audit trail)
       await new Promise((resolve, reject) => {
-        this.db.run(`UPDATE schedule_versions SET is_active = 0 WHERE effective_date < ?`, 
-          [cutoffString], function(err) {
+        this.db.run(`UPDATE schedule_versions SET is_active = 0 WHERE effective_date < ?`,
+          [cutoffDay], function(err) {
             if (err) reject(err);
             else {
-              console.log(`🧹 Marked ${this.changes} old schedule versions as inactive`);
+              console.log(`🧹 Marked ${this.changes} old schedule versions as inactive (< ${cutoffDay})`);
               resolve();
             }
           });
