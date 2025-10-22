@@ -5,7 +5,14 @@ const slackConfig = require('../../config/slack');
 const fs = require('fs');
 const path = require('path');
 let yaml;
-try { yaml = require('js-yaml'); } catch (e) { yaml = null; }
+try {
+  // Try the server-local install first (as used by scheduleLoader.node)
+  yaml = require('../../server/node_modules/js-yaml');
+} catch (e1) {
+  try { yaml = require('js-yaml'); } catch (e2) {
+    try { yaml = require('yaml'); } catch (e3) { yaml = null; }
+  }
+}
 
 class SlackNotificationService {
   constructor() {
@@ -20,6 +27,9 @@ class SlackNotificationService {
     if (this.teamsIndex) return this.teamsIndex;
     try {
       const teamsPath = path.join(__dirname, '../../public/redis-sre/teams/teams.yaml');
+      if (!yaml) {
+        console.warn('teams index: js-yaml not available; mentions/timezone formatting may be limited');
+      }
       const raw = fs.readFileSync(teamsPath, 'utf8');
       const doc = yaml ? yaml.load(raw) : null;
       const index = { byId: new Map(), byEmail: new Map(), members: [] };
@@ -34,6 +44,7 @@ class SlackNotificationService {
         }
       }
       this.teamsIndex = index;
+      console.log('teams index loaded', { path: teamsPath, count: index.members.length });
       return this.teamsIndex;
     } catch (e) {
       console.warn('⚠️ Failed to load teams.yaml for Slack mentions:', e.message);
@@ -162,9 +173,11 @@ class SlackNotificationService {
         timeZone: 'UTC',
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
       });
+      console.log('formatDateForMember', { tz, memberId: member && member.id, local, utc });
       return `${local} (${utc})`;
     } catch (e) {
       // Fallback to UTC if timezone invalid
+      console.warn('formatDateForMember fallback to UTC', { tzTried: tz, error: e.message });
       return new Date(date).toLocaleString('en-US', {
         timeZone: 'UTC',
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
