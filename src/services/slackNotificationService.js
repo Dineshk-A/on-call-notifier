@@ -233,8 +233,8 @@ class SlackNotificationService {
     const currentResolved = await this.resolveMention(engineerRaw);
     const endDisplay = this.formatUtc(shiftInfo.endDate || new Date());
 
-    // Build a clean CURRENT-only main template explicitly (do not rely on regex/removal)
-    let mainTemplateText = ':rotating_light: *ON-CALL SHIFT UPDATE* :rotating_light:\n\n:large_green_circle: *CURRENT ON-CALL*\n:pager: {engineerName} is now on-call until {endTime}';
+    // Build a minimal CURRENT-only main template (no headers)
+    let mainTemplateText = ':pager: {engineerName} is now on-call until {endTime}';
 
     // Main message without NEXT/AFTER to keep it clean; those go as thread reply
     const mainText = this.replaceTemplateVariables(mainTemplateText, { ...shiftInfo, engineerName: currentResolved.display, endTime: endDisplay });
