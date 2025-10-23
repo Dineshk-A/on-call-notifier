@@ -93,71 +93,51 @@ The diagram below shows the overall architecture and data flow of the on-call no
 
 ```mermaid
 flowchart LR
-  %% Overall architecture
-  subgraph Host[Docker Host]
-    subgraph FE[Container: frontend (redis-oncall-frontend)]
-      NGINX[Nginx serves SPA]
-      VOL_FE[/Volume: ./public/redis-sre -> /usr/share/nginx/html/redis-sre:ro/]
-    end
-
-    subgraph BE[Container: backend (redis-oncall-backend)]
-      NS[server/notificationServer.js]
-      SS[ShiftSchedulerService]
-      VS[VersionedScheduleService]
-      HS[HistoryService]
-      SLK[SlackNotificationService]
-      LOADER[scheduleLoader.node.js]
-      DB[(SQLite DB \n /app/data/history.db)]
-      VOL_BE1[/Volume: ./public/redis-sre -> /app/public/redis-sre/]
-      VOL_BE2[/Volume: ./data -> /app/data/]
-    end
+  subgraph Frontend
+    NGINX[Nginx serves SPA]
+    FE_VOL[Volume: ./public/redis-sre -> /usr/share/nginx/html/redis-sre:ro]
   end
 
-  %% External systems
-  SLACK_API[(Slack API)]
+  subgraph Backend
+    NS[server/notificationServer.js]
+    SS[ShiftSchedulerService]
+    VS[VersionedScheduleService]
+    HS[HistoryService]
+    SLK[SlackNotificationService]
+    LOADER[scheduleLoader.node.js]
+    DB((SQLite history.db))
+    BE_VOL1[Volume: ./public/redis-sre -> /app/public/redis-sre]
+    BE_VOL2[Volume: ./data -> /app/data]
+  end
 
-  %% Static files
-  SCHED[/schedule.yaml/]
-  TEAMS[/teams.yaml/]
-  OVERRIDES[/overrides.json/]
+  SLACK_API(Slack API)
 
-  %% Volume wiring
-  VOL_FE --- SCHED
-  VOL_FE --- TEAMS
-  VOL_FE --- OVERRIDES
-  VOL_BE1 --- SCHED
-  VOL_BE1 --- TEAMS
-  VOL_BE1 --- OVERRIDES
-  VOL_BE2 --- DB
+  SCHED[schedule.yaml]
+  TEAMS[teams.yaml]
+  OVERRIDES[overrides.json]
 
-  %% Data flow: schedule + teams
+  FE_VOL --> SCHED
+  FE_VOL --> TEAMS
+
+  BE_VOL1 --> SCHED
+  BE_VOL1 --> TEAMS
+  BE_VOL1 --> OVERRIDES
+  BE_VOL2 --> DB
+
   SCHED --> LOADER
   TEAMS --> LOADER
 
-  %% Versioning and history
-  LOADER --> VS
-  VS -- createVersion/getForDate --> HS
-  HS --- DB
-
-  %% Runtime on-call calculation & notifications
   LOADER --> SS
   OVERRIDES --> SS
   SS --> SLK
   SLK --> SLACK_API
 
-  %% API Endpoints (simplified)
-  NS -->|/api/debug/current| SS
-  NS -->|/api/history/*| VS
-  NS -->|/api/test-slack| SLK
+  LOADER --> VS
+  VS --> HS
+  HS --> DB
 
-  %% Relationships
-  VS --- SS
-  HS --- VS
-  SLK --- SS
-
-  %% Notes
-  classDef ext fill:#eef,stroke:#99f,stroke-width:1px;
-  class SLACK_API ext
+  NS --> SS
+  NS --> VS
 ```
 
 ## 🎨 UI Features
