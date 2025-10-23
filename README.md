@@ -81,6 +81,85 @@ Automatically managed file for schedule overrides (don't edit manually).
 - **Multi-timezone Support**: Handles different team member timezones
 - **Dynamic Configuration**: Changes to YAML files are automatically loaded
 
+
+## 🧭 System Architecture
+
+The diagram below shows the overall architecture and data flow of the on-call notifier:
+- Frontend and backend Docker containers and their mounted volumes
+- How schedule.yaml/teams.yaml/overrides.json are loaded
+- How shifts are calculated and notifications are sent to Slack
+- How schedule versions and historical assignments are stored in SQLite via HistoryService
+- Key services: ShiftSchedulerService, VersionedScheduleService, HistoryService, SlackNotificationService
+
+```mermaid
+flowchart LR
+  %% Overall architecture
+  subgraph Host[Docker Host]
+    subgraph FE[Container: frontend (redis-oncall-frontend)]
+      NGINX[Nginx serves SPA]
+      VOL_FE[/Volume: ./public/redis-sre -> /usr/share/nginx/html/redis-sre:ro/]
+    end
+
+    subgraph BE[Container: backend (redis-oncall-backend)]
+      NS[server/notificationServer.js]
+      SS[ShiftSchedulerService]
+      VS[VersionedScheduleService]
+      HS[HistoryService]
+      SLK[SlackNotificationService]
+      LOADER[scheduleLoader.node.js]
+      DB[(SQLite DB \n /app/data/history.db)]
+      VOL_BE1[/Volume: ./public/redis-sre -> /app/public/redis-sre/]
+      VOL_BE2[/Volume: ./data -> /app/data/]
+    end
+  end
+
+  %% External systems
+  SLACK_API[(Slack API)]
+
+  %% Static files
+  SCHED[/schedule.yaml/]
+  TEAMS[/teams.yaml/]
+  OVERRIDES[/overrides.json/]
+
+  %% Volume wiring
+  VOL_FE --- SCHED
+  VOL_FE --- TEAMS
+  VOL_FE --- OVERRIDES
+  VOL_BE1 --- SCHED
+  VOL_BE1 --- TEAMS
+  VOL_BE1 --- OVERRIDES
+  VOL_BE2 --- DB
+
+  %% Data flow: schedule + teams
+  SCHED --> LOADER
+  TEAMS --> LOADER
+
+  %% Versioning and history
+  LOADER --> VS
+  VS -- createVersion/getForDate --> HS
+  HS --- DB
+
+  %% Runtime on-call calculation & notifications
+  LOADER --> SS
+  OVERRIDES --> SS
+  SS --> SLK
+  SLK --> SLACK_API
+
+  %% API Endpoints (simplified)
+  NS -->|/api/debug/current| SS
+  NS -->|/api/history/*| VS
+  NS -->|/api/test-slack| SLK
+
+  %% Relationships
+  VS --- SS
+  HS --- VS
+  SLK --- SS
+
+  %% Notes
+  classDef ext fill:#eef,stroke:#99f,stroke-width:1px;
+  class SLACK_API ext
+```
+
 ## 🎨 UI Features
 
 - **Redis-themed design** with signature red (#FF4438) and dark navy colors
